@@ -1,4 +1,5 @@
 import os
+import sys
 import pickle
 import numpy as np
 import pandas as pd
@@ -286,7 +287,10 @@ class torch_trainer:
 
 if __name__ == "__main__":
     # args
+    arg_str = ''
+    for arg in sys.argv[1:]:
+        arg_str += arg
     # num_workers_data_loader
     # configs
-    
-    run_training()
+    config = eval(arg_str)
+    run_training(config)
