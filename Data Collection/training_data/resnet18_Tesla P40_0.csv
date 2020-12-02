@@ -1,2 +1,0 @@
-,epoch_timings,test_acc,test_error,test_timings,train_acc,train_loss,config_index,model_name,num_of_paramters,num_of_layers,model_type,gpu,is_distributed,distributed_strategy,num_of_nodes,num_of_gpus,dataset,num_workers_data_loader,num_epochs,batch_size,learning_rate,momentum,weight_decay,gamma,milestones,lr_scheduler,optimizer,criterion
-0,75.96795964241028,0.098,3.2193855152854436,19.318087100982666,0.18944,2.190527166551946,0,resnet18,11689512,0,cnn,Tesla P40,False,,1,1,cifar10,0,1,128,0.01,0.9,0.0001,0.1,"60,80",,,
