@@ -19,6 +19,7 @@ from configuration_generator import Configurations
 
 data_directory = ''
 save_directory = ''
+num_workers_data_loaders = 0
 
 
 def str2bool(s):
@@ -103,13 +104,13 @@ def get_dataloaders(train_data, test_data, config):
                                                batch_size=config['batch_size'],
                                                shuffle=True,
                                                pin_memory=True,
-                                               num_workers=config['num_workers_data_loader'])
+                                               num_workers=num_workers_data_loaders)
 
     test_loader = torch.utils.data.DataLoader(dataset=test_data,
                                               batch_size=config['batch_size'],
                                               shuffle=False,
                                               pin_memory=True,
-                                              num_workers=config['num_workers_data_loader'])
+                                              num_workers=num_workers_data_loaders)
     return train_loader, test_loader
     
 
@@ -345,8 +346,8 @@ if __name__ == "__main__":
                         help='Number of nodes (For Distributed).')
     parser.add_argument("--num-gpus", default=1, type=int,
                         help='Number of GPUs (For Distributed).')
-    parser.add_argument("--num-workers", default=0, type=int,
-                        help='Distributed strategy like NCCL.')
+    parser.add_argument('-w', "--num-workers", default=4, type=int,
+                        help='Number of workers for the dataloaders.')
     parser.add_argument('-s', '--save-location', default='training_data/', type=str,
                         help='Save location of the training log.')
     
@@ -355,6 +356,7 @@ if __name__ == "__main__":
     
     data_directory = args.data
     save_directory = args.save_location
+    num_workers_data_loaders = args.num_workers
     
     if args.configurations != '':
         
@@ -373,6 +375,7 @@ if __name__ == "__main__":
 
             for config_index in args.configurations.split(','):
                 config = configs[int(config_index)]
+                config['num_workers_data_loader'] = args.num_workers
 
                 print('\n' + ('#' * 40) + 
                       f'\n# Running configuration: {config_index}  \n' + 
@@ -398,5 +401,5 @@ if __name__ == "__main__":
             'num_of_nodes': args.num_nodes, 
             'num_of_gpus': args.num_gpus, 
             'num_workers_data_loader': args.num_workers   
-        }    
+        }
         run_training(config)
