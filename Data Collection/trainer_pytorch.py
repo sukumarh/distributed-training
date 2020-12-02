@@ -71,15 +71,12 @@ def load_cifar10_dataset():
                                      std=[x / 255.0 for x in [63.0, 62.1, 66.7]])
 
     train_transform = transforms.Compose([
-        transforms.Resize(224),
-        transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         normalize
     ])
 
     test_transform = transforms.Compose([ 
-        transforms.Resize(224),
         transforms.ToTensor(), 
         normalize 
     ])
@@ -338,7 +335,7 @@ if __name__ == "__main__":
                         help='Distributed strategy like NCCL.')
     parser.add_argument('-e', '--epochs', default=2, type=int,
                         help='Number of epochs.')
-    parser.add_argument('-lr', '--learning-rate', type=int, default=0.01,
+    parser.add_argument('-lr', '--learning-rate', type=float, default=0.01,
                         help="Learning Rate")
     parser.add_argument('-m', '--model-name', type=str, default='resnet18',
                         help="The model to be trained.")
