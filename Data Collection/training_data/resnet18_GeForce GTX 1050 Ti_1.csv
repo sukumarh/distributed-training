@@ -1,2 +1,0 @@
-,train_acc,test_acc,train_loss,test_error,epoch_timings,test_timings,config_index,model_name,num_of_paramters,num_of_layers,model_type,gpu,is_distributed,distributed_strategy,num_of_nodes,num_of_gpus,dataset,num_workers_data_loader,num_epochs,batch_size,learning_rate,momentum,weight_decay,gamma,milestones,lr_scheduler,optimizer,criterion
-0,0.19154,0.1319,2.1863833498162077,4.755145555810083,142.41764855384827,39.993261098861694,1,resnet18,11689512,0,cnn,GeForce GTX 1050 Ti,False,None,1,1,cifar10,0,1,128,0.01,0.9,0.0001,0.1,"60,80",,,

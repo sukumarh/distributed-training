@@ -321,7 +321,7 @@ if __name__ == "__main__":
     # args
     parser = argparse.ArgumentParser(description="Data Collection trainer (PyTorch)")
     
-    parser.add_argument('-b', '--batch-size', type=int, default=32,
+    parser.add_argument('-b', '--batch-size', type=int, default=128,
                         help="Batch Size")
     parser.add_argument('-c', '--configurations', type=str, default='',
                         help="Comma-separated list of configurations (config-index) to run. ")
@@ -333,13 +333,13 @@ if __name__ == "__main__":
                         help="The dataset like CIFAR10, FashionMNIST.")
     parser.add_argument("--distributed", type=str2bool, default=False,
                         help="Run training in distributed mode.")
-    parser.add_argument("--distributed-strategy", default="None", type=str,
+    parser.add_argument("--distributed-strategy", default=None, type=str,
                         help='Distributed strategy like NCCL.')
-    parser.add_argument('-e', '--epochs', default=1, type=int,
+    parser.add_argument('-e', '--epochs', default=2, type=int,
                         help='Number of epochs.')
-    parser.add_argument('-lr', '--learning-rate', type=int, default=32,
+    parser.add_argument('-lr', '--learning-rate', type=int, default=0.01,
                         help="Learning Rate")
-    parser.add_argument('-m', '--model-name', type=str, default='Resnet18',
+    parser.add_argument('-m', '--model-name', type=str, default='resnet18',
                         help="The model to be trained.")
     parser.add_argument("--num-nodes", default=1, type=int,
                         help='Number of nodes (For Distributed).')
@@ -389,10 +389,9 @@ if __name__ == "__main__":
     else:
         config = {
             'batch_size': args.batch_size,
-            'config_index': args.config_index,
             'dataset': args.dataset,
             'is_distributed': args.distributed,
-            'distributed_strategy': None if not args.distributed_strategy else args.distributed_strategy,
+            'distributed_strategy': args.distributed_strategy,
             'num_epochs': args.epochs,
             'learning_rate': args.learning_rate, 
             'model_name': args.model_name,
