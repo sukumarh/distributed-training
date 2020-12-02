@@ -1,6 +1,7 @@
 import os
 import sys
 import pickle
+import argparse
 import numpy as np
 import pandas as pd
 from time import time
@@ -14,13 +15,22 @@ import torch.autograd.profiler as profiler
 
 from torchvision import datasets, models, transforms
 
+from configuration_generator import Configurations
+
+data_directory = ''
+save_directory = ''
+
+
+def str2bool(s):
+    return s.lower() in ('true', '1')
+
 
 def load_config(config=None):
     config_ = {
         'config_index': 0,
 
         # model
-        'model_name': 'Resnet18',
+        'model_name': 'resnet18',
         'num_of_paramters': 0,
         'num_of_layers': 0,
         'model_type': 'cnn',
@@ -37,6 +47,7 @@ def load_config(config=None):
         'num_workers_data_loader': 0,
 
         # hyper-parameters
+        'num_epochs': 2,
         'batch_size': 128,
         'learning_rate': 0.01,
         'momentum': 0.9,
@@ -45,7 +56,7 @@ def load_config(config=None):
         'milestones': '60,80',
         'lr_scheduler': '',
         'optimizer':'',
-        'criterion': ''   
+        'criterion': ''
     }
     
     if config:
@@ -54,11 +65,12 @@ def load_config(config=None):
     return config_
 
 
-def load_cifar10_dataset(config):
+def load_cifar10_dataset():
     normalize = transforms.Normalize(mean=[x / 255.0 for x in [125.3, 123.0, 113.9]],
                                      std=[x / 255.0 for x in [63.0, 62.1, 66.7]])
 
     train_transform = transforms.Compose([
+        transforms.Resize(224),
         transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
@@ -66,22 +78,27 @@ def load_cifar10_dataset(config):
     ])
 
     test_transform = transforms.Compose([ 
+        transforms.Resize(224),
         transforms.ToTensor(), 
         normalize 
     ])
     
     print('Loading train data')
-    train_data = datasets.CIFAR10(root='data/',
+    train_data = datasets.CIFAR10(root=data_directory,
                                   train=True,
                                   transform=train_transform,
                                   download=True)
     
     print('\nLoading test data')
-    test_data = datasets.CIFAR10(root='data/',
+    test_data = datasets.CIFAR10(root=data_directory,
                                   train=False,
                                   transform=test_transform,
                                   download=True)
     
+    return train_data, test_data
+
+
+def get_dataloaders(train_data, test_data, config):
     train_loader = torch.utils.data.DataLoader(dataset=train_data,
                                                batch_size=config['batch_size'],
                                                shuffle=True,
@@ -94,10 +111,27 @@ def load_cifar10_dataset(config):
                                               pin_memory=True,
                                               num_workers=config['num_workers_data_loader'])
     return train_loader, test_loader
+    
+
+def model_simulation(config, train_loader, test_loader):
+    if config['model_name'] in models.__dir__():
+        # Model present in Torchvision
+        model = models.__getattribute__(config['model_name'])()
+    else:
+        print('Model not present in Torchvision model repository.')
+        print('Exiting...')
+        return
+    
+    config['num_of_paramters'] = sum(p.numel() for p in model.parameters())
+    config['gpu'] = torch.cuda.get_device_name()
+    
+    trainer = torch_trainer(model, config, train_loader, test_loader)
+    trainer.train(config['num_epochs'])
+    trainer.save_data()
 
 
 def run_training(config=None):
-    ## Check for GPU support
+    # Check for GPU support
     if torch.cuda.is_available():
         print('CUDA Toolkit available for PyTorch')
         print('GPU: ' + torch.cuda.get_device_name() + '\n')
@@ -107,20 +141,10 @@ def run_training(config=None):
         return
         
     config = load_config(config)
-    train_loader, test_loader = load_cifar10_dataset(config)
+    train_data, test_data = load_cifar10_dataset()
+    train_loader, test_loader = get_dataloaders(train_data, test_data, config)
+    model_simulation(config, train_loader, test_loader)
     
-    model = models.resnet18()
-    
-    config['num_of_paramters'] = sum(p.numel() for p in model.parameters())
-    config['gpu'] = torch.cuda.get_device_name()
-    
-    trainer = torch_trainer(model, config, train_loader, test_loader)
-    with torch.autograd.profiler.profile(use_cuda=True) as prof:
-        trainer.train(1)
-    print(prof)
-    
-    trainer.save_data()
-
 
 class torch_trainer:
     
@@ -146,15 +170,22 @@ class torch_trainer:
 
         Capture the training statistics
         num_epochs - No. of epochs
-        """        
+        """
         print('\n' + ('#' * 40) + 
-              '\n# {} on GPU: {} \n'.format(self.config['model_name'], 
-                                            self.config['gpu']) + 
+              '\n# {} on {} \n'.format(self.config['model_name'], 
+                                       self.config['gpu']) + 
               ('#' * 40))
         if 'fc' in self.model.__dir__():
             num_ftrs = self.model.fc.in_features
             self.model.fc = nn.Linear(num_ftrs, 
                                       len(self.train_loader.dataset.classes))
+            print(f'Updated last layer: fc')
+        elif 'classifier' in self.model.__dir__():
+            last_layer = len(self.model.classifier) - 1
+            num_ftrs = self.model.classifier[last_layer].in_features
+            self.model.classifier[last_layer] = nn.Linear(num_ftrs, 
+                                                          len(self.train_loader.dataset.classes))
+            print(f'Updated last layer: classifier[{last_layer}]')
         
         cnn = self.model.cuda()
         criterion = nn.CrossEntropyLoss().cuda()
@@ -278,8 +309,9 @@ class torch_trainer:
         saving_data = pd.DataFrame.from_dict(self.training_log)
         for key in self.config:
             saving_data[key] = self.config[key]
-        saving_data.to_csv(file_name, index = True)
+        saving_data.to_csv(save_directory + file_name, index = True)
         saving_data.tail()
+        print('Training data saved successfully.')
         
     def load_data(self):
         pass
@@ -287,10 +319,85 @@ class torch_trainer:
 
 if __name__ == "__main__":
     # args
-    arg_str = ''
-    for arg in sys.argv[1:]:
-        arg_str += arg
-    # num_workers_data_loader
-    # configs
-    config = eval(arg_str)
-    run_training(config)
+    parser = argparse.ArgumentParser(description="Data Collection trainer (PyTorch)")
+    
+    parser.add_argument('-b', '--batch-size', type=int, default=32,
+                        help="Batch Size")
+    parser.add_argument('-c', '--configurations', type=str, default='',
+                        help="Comma-separated list of configurations (config-index) to run. ")
+    parser.add_argument('--configuration-file', type=str, default='',
+                        help="The configuration file to refer to.")
+    parser.add_argument('-d', '--data', type=str, default='data/',
+                        help="The location of the dataset.")
+    parser.add_argument('--dataset', type=str, default='cifar10',
+                        help="The dataset like CIFAR10, FashionMNIST.")
+    parser.add_argument("--distributed", type=str2bool, default=False,
+                        help="Run training in distributed mode.")
+    parser.add_argument("--distributed-strategy", default="None", type=str,
+                        help='Distributed strategy like NCCL.')
+    parser.add_argument('-e', '--epochs', default=1, type=int,
+                        help='Number of epochs.')
+    parser.add_argument('-lr', '--learning-rate', type=int, default=32,
+                        help="Learning Rate")
+    parser.add_argument('-m', '--model-name', type=str, default='Resnet18',
+                        help="The model to be trained.")
+    parser.add_argument("--num-nodes", default=1, type=int,
+                        help='Number of nodes (For Distributed).')
+    parser.add_argument("--num-gpus", default=1, type=int,
+                        help='Number of GPUs (For Distributed).')
+    parser.add_argument("--num-workers", default=0, type=int,
+                        help='Distributed strategy like NCCL.')
+    parser.add_argument('-s', '--save-location', default='training_data/', type=str,
+                        help='Save location of the training log.')
+    
+    
+    args = parser.parse_args()
+    
+    data_directory = args.data
+    save_directory = args.save_location
+    
+    if args.configurations != '':
+        
+        cf = Configurations()
+        if args.configuration_file == '':
+            configs = cf.loadConfigurations()
+        else:
+            configs = cf.loadConfigurations(args.configuration_file)
+            
+        # Check for GPU support
+        if torch.cuda.is_available():
+            print('CUDA Toolkit available for PyTorch')
+            print('GPU: ' + torch.cuda.get_device_name() + '\n')
+        
+            train_data, test_data = load_cifar10_dataset()
+
+            for config_index in args.configurations.split(','):
+                config = configs[int(config_index)]
+
+                print('\n' + ('#' * 40) + 
+                      f'\n# Running configuration: {config_index}  \n' + 
+                      ('#' * 40))
+                # run_training(config)
+                config = load_config(config)
+                train_loader, test_loader = get_dataloaders(train_data, test_data, config)
+                model_simulation(config, train_loader, test_loader)
+                print()
+        else:
+            print('GPU Support not found for PyTorch')
+            print('Exiting...')
+            
+    else:
+        config = {
+            'batch_size': args.batch_size,
+            'config_index': args.config_index,
+            'dataset': args.dataset,
+            'is_distributed': args.distributed,
+            'distributed_strategy': None if not args.distributed_strategy else args.distributed_strategy,
+            'num_epochs': args.epochs,
+            'learning_rate': args.learning_rate, 
+            'model_name': args.model_name,
+            'num_of_nodes': args.num_nodes, 
+            'num_of_gpus': args.num_gpus, 
+            'num_workers_data_loader': args.num_workers   
+        }    
+        run_training(config)
