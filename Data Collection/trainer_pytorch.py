@@ -11,7 +11,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
-import torch.autograd.profiler as profiler
+# import torch.autograd.profiler as profiler
 
 from torchvision import datasets, models, transforms
 
