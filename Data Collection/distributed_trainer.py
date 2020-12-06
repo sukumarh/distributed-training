@@ -15,7 +15,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from configuration_generator import Configurations
 
-
 data_directory = 'data/'
 save_directory = 'training_data/'
 num_workers_data_loaders = 8
@@ -37,19 +36,19 @@ def load_config(config=None):
 
         # hardware
         'gpu': '',
-        'is_distributed': False,
+        'is_distributed': True,
         'distributed_strategy': 'None',
         'num_of_nodes': 1,
         'num_of_gpus': 1,
 
         # dataset
         'dataset': 'cifar10',
-        'num_workers_data_loader': 0,
+        'num_workers_data_loader': 8,
 
         # hyper-parameters
         'num_epochs': 2,
-        'batch_size': 128,
-        'learning_rate': 0.01,
+        'batch_size': 512,
+        'learning_rate': 0.1,
         'momentum': 0.9,
         'weight_decay': 1e-4,
         'gamma': 0.1,
@@ -120,7 +119,6 @@ def setup(rank, world_size,
         # Distributed package only covers collective communications with Gloo
         # backend and FileStore on Windows platform. Set init_method parameter
         # in init_process_group to a local file.
-        # Example init_method="file:///f:/libtmp/some_file"
         init_method = gloo_file
 
         # initialize the process group
@@ -149,8 +147,6 @@ def test(cnn, criterion, training_log, test_loader, rank):
 
     test_start_time = time()
     for i, (images, labels) in enumerate(test_loader):
-        # images = images.cuda()
-        # labels = labels.cuda()
         images = images.to(rank)
         labels = labels.to(rank)
 
@@ -176,9 +172,14 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
     Train function
 
     Capture the training statistics
-    num_epochs - No. of epochs
+    rank            - GPU index
+    world_size      - Total number of GPUs
+    train_data      - Training data
+    test_data       - Test data
+    setup_config    - Configuration for setting up distributed environment
+    config          - Training configuration
     """
-    print(f'Setting up DDP for rank {rank}.')
+    print(f'Setting up DDP for GPU (rank): {rank}.')
     setup(rank=rank, world_size=world_size, **setup_config)
 
     torch.cuda.set_device(rank)
@@ -202,27 +203,20 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
     if 'fc' in model.__dir__():
         num_ftrs = model.fc.in_features
         model.fc = nn.Linear(num_ftrs, len(train_loader.dataset.classes))
-        print(f'Updated last layer: fc')
     elif 'classifier' in model.__dir__():
         last_layer = len(model.classifier) - 1
         num_ftrs = model.classifier[last_layer].in_features
         model.classifier[last_layer] = nn.Linear(num_ftrs, len(train_loader.dataset.classes))
-        print(f'Updated last layer: classifier[{last_layer}]')
 
-    cnn = DDP(model, device_ids=[rank], output_device=rank)
+    model_cuda = model.to(rank)
+
+    cnn = DDP(model_cuda, device_ids=[rank], output_device=rank)
 
     config['num_of_paramters'] = sum(p.numel() for p in cnn.parameters())
     config['gpu'] = torch.cuda.get_device_name()
 
-    num_epochs = 10
-    print('\n' + ('#' * 40) +
-          '\n# {} on {} \n'.format(config['model_name'],
-                                   config['gpu']) +
-          ('#' * 40))
+    num_epochs = config['num_epochs']
 
-
-    # cnn = model.cuda()
-    # criterion = nn.CrossEntropyLoss().cuda()
     criterion = nn.CrossEntropyLoss().to(rank)
     cnn_optimizer = optim.SGD(cnn.parameters(),
                               lr=config['learning_rate'],
@@ -234,27 +228,13 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
                                                   config['milestones'].split(','))),
                                          gamma=config['gamma'])
 
-    print_bound, print_output = 3, True
-    p = len(train_loader) // 60
-
-    # training_start_time = time()
+    p = len(train_loader) // 47
     for epoch in range(num_epochs):
         epoch_start_time = time()
 
-        if epoch < print_bound or epoch >= num_epochs - print_bound:
-            print_output = True
-        elif epoch == print_bound:
-            print('.\n.\n.\n')
-            print_output = False
-
-        __print__, __result__ = '', ''
         print(' ' * 150, end='\r')
-        if print_output:
-            print(f'Epoch {epoch + 1}/{num_epochs}')
-            print('-' * 10)
-        else:
-            __print__ = f'Epoch {epoch + 1}/{num_epochs}: '
-            print(__print__, end='\r')
+        __print__, __result__ = f'[GPU: {rank}] Epoch {epoch + 1}/{num_epochs}: ', ''
+        print(__print__, end='\r')
 
         xentropy_loss_avg = 0.
         correct = 0.
@@ -266,8 +246,6 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
                 __print__ += '#'
                 print(__print__ + __result__, end='\r')
 
-            # images = images.cuda()
-            # labels = labels.cuda()
             images = images.to(rank)
             labels = labels.to(rank)
 
@@ -291,15 +269,13 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
             print(__print__ + __result__, end='\r')
 
         test_acc = test(cnn, criterion, training_log, test_loader, rank)
-        if print_output:
-            print('\n')
-
         scheduler.step()
 
         training_log['epoch_timings'].append(time() - epoch_start_time)
         training_log['train_acc'].append(accuracy)
         training_log['test_acc'].append(test_acc)
         training_log['train_loss'].append(xentropy_loss_avg / (i + 1))
+    print()
 
     save_data(training_log, config, rank)
     cleanup()
@@ -307,6 +283,7 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
 
 def save_data(training_log, config, rank):
     # Naming scheme: Model_GPU_Rank_{Distributed Strategy (NCCL)}_{config-index}.csv
+    # Example: resnet18_V100_2_nccl_24.csv
     if config['is_distributed']:
         file_name = '{}_{}_{}_{}_{}.csv'.format(config['model_name'],
                                                 config['gpu'],
@@ -323,15 +300,14 @@ def save_data(training_log, config, rank):
         saving_data[key] = config[key]
     saving_data.to_csv(save_directory + file_name, index=True)
     saving_data.tail()
-    print('Training data saved successfully.')
+    print(f'[GPU: {rank}]Training data saved successfully.')
 
 
 if __name__ == "__main__":
     # args
     parser = argparse.ArgumentParser(description="Data Collection trainer (PyTorch)")
 
-
-    parser.add_argument('-b', '--batch-size', type=int, default=128,
+    parser.add_argument('-b', '--batch-size', type=int, default=512,
                         help="Batch Size")
     parser.add_argument('-c', '--configurations', type=str, default='',
                         help="Comma-separated list of configurations (config-index) to run. ")
@@ -340,7 +316,7 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--data', type=str, default='data/',
                         help="The location of the dataset.")
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        help="The dataset like CIFAR10, FashionMNIST.")
+                        help="The dataset like CIFAR10.")
     parser.add_argument('-da', '--distributed-address', type=str, default='localhost',
                         help="Address for distributed process group setup. ")
     parser.add_argument('-dp', '--distributed-port', type=str, default='12335',
@@ -351,7 +327,7 @@ if __name__ == "__main__":
                         help='Number of epochs.')
     parser.add_argument('-g', "--gloo-file", default=None, type=str,
                         help='Gloo file location, if backend chosen is gloo.')
-    parser.add_argument('-lr', '--learning-rate', type=float, default=0.01,
+    parser.add_argument('-lr', '--learning-rate', type=float, default=0.1,
                         help="Learning Rate")
     parser.add_argument('-m', '--model-name', type=str, default='resnet18',
                         help="The model to be trained.")
@@ -359,7 +335,7 @@ if __name__ == "__main__":
                         help='Number of nodes.')
     parser.add_argument("--num-gpus", default=1, type=int,
                         help='Number of GPUs.')
-    parser.add_argument('-w', "--num-workers", default=4, type=int,
+    parser.add_argument('-w', "--num-workers", default=16, type=int,
                         help='Number of workers for the data loaders.')
     parser.add_argument('-s', '--save-location', default='training_data/', type=str,
                         help='Save location of the training log.')
@@ -396,6 +372,10 @@ if __name__ == "__main__":
             train_data, test_data = load_cifar10_dataset()
 
             for config_index in args.configurations.split(','):
+                print('\n' + ('-' * 28) + '-' * len(str(config_index)) +
+                      f'\n> Running configuration: {config_index}  <\n' +
+                      ('-' * 28) + '-' * len(str(config_index)))
+
                 config = configs[int(config_index)]
                 if n_gpus < world_size:
                     print('{} GPUs required but only {} found. Skipping configuration {}.'.format(world_size,
@@ -407,11 +387,12 @@ if __name__ == "__main__":
                       f'\n# GPUs available: {n_gpus}, GPUs Required: {world_size} \n' +
                       ('#' * 40))
 
-                config['num_workers_data_loader'] = args.num_workers
+                print('\n#' + ('-' * 40) +
+                      '\n# {} on {} \n'.format(config['model_name'],
+                                               torch.cuda.get_device_name()) +
+                      '#' + ('-' * 40) + '\n')
 
-                print('\n' + ('#' * 40) +
-                      f'\n# Running configuration: {config_index}  \n' +
-                      ('#' * 40))
+                config['num_workers_data_loader'] = args.num_workers
 
                 mp.spawn(train,
                          args=(world_size, train_data, test_data, setup_config, config),
@@ -422,7 +403,6 @@ if __name__ == "__main__":
         else:
             print('GPU Support not found for PyTorch')
             print('Exiting...')
-
     else:
         config = {
             'batch_size': args.batch_size,
@@ -440,11 +420,20 @@ if __name__ == "__main__":
         n_gpus = torch.cuda.device_count()
         world_size = args.num_gpus
         if n_gpus >= world_size:
+            print('\n' + ('#' * 40) +
+                  f'\n# GPUs available: {n_gpus}, GPUs Required: {world_size} \n' +
+                  ('#' * 40))
+
+            print('\n#' + ('-' * 40) +
+                  '\n# {} on {} \n'.format(config['model_name'],
+                                           torch.cuda.get_device_name()) +
+                  '#' + ('-' * 40))
+
             train_data, test_data = load_cifar10_dataset()
+            print()
             mp.spawn(train,
                      args=(world_size, train_data, test_data, setup_config, config),
                      nprocs=world_size,
                      join=True)
         else:
             print('{} GPUs required but only {} found. Exiting...'.format(world_size, n_gpus))
-
