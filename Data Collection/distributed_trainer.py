@@ -37,17 +37,19 @@ def load_config(config=None):
         # hardware
         'gpu': '',
         'is_distributed': True,
-        'distributed_strategy': 'None',
+        'distributed_strategy': 'nccl',
         'num_of_nodes': 1,
         'num_of_gpus': 1,
+        'rank': 0,
 
         # dataset
         'dataset': 'cifar10',
         'num_workers_data_loader': 8,
+        'distribute_data': False,
 
         # hyper-parameters
         'num_epochs': 2,
-        'batch_size': 512,
+        'batch_size': 128,
         'learning_rate': 0.1,
         'momentum': 0.9,
         'weight_decay': 1e-4,
@@ -80,33 +82,50 @@ def load_cifar10_dataset():
     ])
 
     print('Loading train data')
-    train_data = datasets.CIFAR10(root=data_directory,
-                                  train=True,
-                                  transform=train_transform,
-                                  download=True)
+    train_data_ = datasets.CIFAR10(root=data_directory,
+                                   train=True,
+                                   transform=train_transform,
+                                   download=True)
 
     print('\nLoading test data')
-    test_data = datasets.CIFAR10(root=data_directory,
-                                 train=False,
-                                 transform=test_transform,
-                                 download=True)
+    test_data_ = datasets.CIFAR10(root=data_directory,
+                                  train=False,
+                                  transform=test_transform,
+                                  download=True)
 
-    return train_data, test_data
+    print()
+    return train_data_, test_data_
 
 
-def get_dataloaders(train_data, test_data, config):
-    train_loader = torch.utils.data.DataLoader(dataset=train_data,
-                                               batch_size=config['batch_size'],
-                                               shuffle=True,
-                                               pin_memory=True,
-                                               num_workers=num_workers_data_loaders)
+def get_dataloaders(train_data, test_data, config, world_size):
+    if config['distribute_data']:
+        print('[config] Distributing training data among GPUs')
+        train_loaders = []
 
-    test_loader = torch.utils.data.DataLoader(dataset=test_data,
-                                              batch_size=config['batch_size'],
-                                              shuffle=False,
-                                              pin_memory=True,
-                                              num_workers=num_workers_data_loaders)
-    return train_loader, test_loader
+        train_data_splits = torch.utils.data.random_split(
+            train_data,
+            tuple([len(train_data) // world_size] * world_size)
+        )
+
+        for train_split in train_data_splits:
+            train_loaders.append(torch.utils.data.DataLoader(dataset=train_split,
+                                                             batch_size=config['batch_size'],
+                                                             shuffle=True,
+                                                             pin_memory=True,
+                                                             num_workers=num_workers_data_loaders))
+    else:
+        train_loaders = [torch.utils.data.DataLoader(dataset=train_data,
+                                                     batch_size=config['batch_size'],
+                                                     shuffle=True,
+                                                     pin_memory=True,
+                                                     num_workers=num_workers_data_loaders)] * world_size
+
+    test_loaders = [torch.utils.data.DataLoader(dataset=test_data,
+                                                batch_size=config['batch_size'],
+                                                shuffle=False,
+                                                pin_memory=True,
+                                                num_workers=num_workers_data_loaders)] * world_size
+    return train_loaders, test_loaders
 
 
 # Distributed Data Parallel setup
@@ -167,15 +186,15 @@ def test(cnn, criterion, training_log, test_loader, rank):
     return val_acc
 
 
-def train(rank, world_size, train_data, test_data, setup_config={}, config=None):
+def train(rank, world_size, train_loaders, test_loaders, setup_config={}, config=None):
     """
     Train function
 
     Capture the training statistics
     rank            - GPU index
     world_size      - Total number of GPUs
-    train_data      - Training data
-    test_data       - Test data
+    train_loaders   - Training data loaders
+    test_loaders    - Test data loaders
     setup_config    - Configuration for setting up distributed environment
     config          - Training configuration
     """
@@ -184,11 +203,11 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
 
     torch.cuda.set_device(rank)
 
+    config['rank'] = rank
     config = load_config(config)
-    config['learning_rate'] = 0.1
-    config['batch_size'] = 512
 
-    train_loader, test_loader = get_dataloaders(train_data, test_data, config)
+    train_loader = train_loaders[rank]
+    test_loader = test_loaders[rank]
 
     training_log = {'train_acc': [],
                     'test_acc': [],
@@ -202,14 +221,12 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
 
     if 'fc' in model.__dir__():
         num_ftrs = model.fc.in_features
-        model.fc = nn.Linear(num_ftrs, len(train_loader.dataset.classes))
-    elif 'classifier' in model.__dir__():
-        last_layer = len(model.classifier) - 1
-        num_ftrs = model.classifier[last_layer].in_features
-        model.classifier[last_layer] = nn.Linear(num_ftrs, len(train_loader.dataset.classes))
+        if 'classes' in train_loader.dataset.__dir__():
+            model.fc = nn.Linear(num_ftrs, len(train_loader.dataset.classes))
+        elif 'dataset' in train_loader.dataset.__dir__():
+            model.fc = nn.Linear(num_ftrs, len(train_loader.dataset.dataset.classes))
 
     model_cuda = model.to(rank)
-
     cnn = DDP(model_cuda, device_ids=[rank], output_device=rank)
 
     config['num_of_paramters'] = sum(p.numel() for p in cnn.parameters())
@@ -228,7 +245,10 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
                                                   config['milestones'].split(','))),
                                          gamma=config['gamma'])
 
-    p = len(train_loader) // 47
+    p = len(train_loader) // 45
+    if p == 0:
+        p = 1
+
     for epoch in range(num_epochs):
         epoch_start_time = time()
 
@@ -284,16 +304,11 @@ def train(rank, world_size, train_data, test_data, setup_config={}, config=None)
 def save_data(training_log, config, rank):
     # Naming scheme: Model_GPU_Rank_{Distributed Strategy (NCCL)}_{config-index}.csv
     # Example: resnet18_V100_2_nccl_24.csv
-    if config['is_distributed']:
-        file_name = '{}_{}_{}_{}_{}.csv'.format(config['model_name'],
-                                                config['gpu'],
-                                                rank,
-                                                config['distributed_strategy'],
-                                                config['config_index'])
-    else:
-        file_name = '{}_{}_{}.csv'.format(config['model_name'],
-                                          config['gpu'],
-                                          config['config_index'])
+    file_name = '{}_{}_{}_{}_{}.csv'.format(config['model_name'],
+                                            config['gpu'],
+                                            rank,
+                                            config['distributed_strategy'],
+                                            config['config_index'])
 
     saving_data = pd.DataFrame.from_dict(training_log)
     for key in config:
@@ -317,6 +332,8 @@ if __name__ == "__main__":
                         help="The location of the dataset.")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help="The dataset like CIFAR10.")
+    parser.add_argument("--distribute-data", action='store_true', default=False,
+                        help="Distributed training data among GPUs.")
     parser.add_argument('-da', '--distributed-address', type=str, default='localhost',
                         help="Address for distributed process group setup. ")
     parser.add_argument('-dp', '--distributed-port', type=str, default='12335',
@@ -366,17 +383,15 @@ if __name__ == "__main__":
             print('CUDA Toolkit available for PyTorch')
             print('GPU: ' + torch.cuda.get_device_name() + '\n')
 
-            n_gpus = torch.cuda.device_count()
-            world_size = configs['num_of_gpus']
-
             train_data, test_data = load_cifar10_dataset()
-
             for config_index in args.configurations.split(','):
                 print('\n' + ('-' * 28) + '-' * len(str(config_index)) +
                       f'\n> Running configuration: {config_index}  <\n' +
                       ('-' * 28) + '-' * len(str(config_index)))
 
                 config = configs[int(config_index)]
+                n_gpus = torch.cuda.device_count()
+                world_size = configs['num_of_gpus']
                 if n_gpus < world_size:
                     print('{} GPUs required but only {} found. Skipping configuration {}.'.format(world_size,
                                                                                                   n_gpus,
@@ -394,15 +409,18 @@ if __name__ == "__main__":
 
                 config['num_workers_data_loader'] = args.num_workers
 
+                train_loaders, test_loaders = get_dataloaders(train_data, test_data, config, world_size)
+                print()
+
                 mp.spawn(train,
-                         args=(world_size, train_data, test_data, setup_config, config),
+                         args=(world_size, train_loaders, test_loaders, setup_config, config),
                          nprocs=world_size,
                          join=True)
                 print()
-
         else:
             print('GPU Support not found for PyTorch')
             print('Exiting...')
+
     else:
         config = {
             'batch_size': args.batch_size,
@@ -414,7 +432,8 @@ if __name__ == "__main__":
             'model_name': args.model_name,
             'num_of_nodes': args.num_nodes,
             'num_of_gpus': args.num_gpus,
-            'num_workers_data_loader': args.num_workers
+            'num_workers_data_loader': args.num_workers,
+            'distribute_data': args.distribute_data
         }
 
         n_gpus = torch.cuda.device_count()
@@ -430,9 +449,10 @@ if __name__ == "__main__":
                   '#' + ('-' * 40))
 
             train_data, test_data = load_cifar10_dataset()
+            train_loaders, test_loaders = get_dataloaders(train_data, test_data, config, world_size)
             print()
             mp.spawn(train,
-                     args=(world_size, train_data, test_data, setup_config, config),
+                     args=(world_size, train_loaders, test_loaders, setup_config, config),
                      nprocs=world_size,
                      join=True)
         else:
