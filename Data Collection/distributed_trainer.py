@@ -391,7 +391,7 @@ if __name__ == "__main__":
 
                 config = configs[int(config_index)]
                 n_gpus = torch.cuda.device_count()
-                world_size = configs['num_of_gpus']
+                world_size = config['num_of_gpus']
                 if n_gpus < world_size:
                     print('{} GPUs required but only {} found. Skipping configuration {}.'.format(world_size,
                                                                                                   n_gpus,
