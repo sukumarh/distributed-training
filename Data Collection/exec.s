@@ -12,5 +12,5 @@ module load python3/intel/3.6.3 cuda/9.0.176 nccl/cuda9.0/2.4.2
 
 source ~/pytorch_env/py3.6.3/bin/activate
 
-python distributed_trainer.py -c "32,33,34" -w 16 -d data/ -s training_data/
+python distributed_trainer.py -c "34,33,32" -w 16 -d data/ -s training_data/
 
