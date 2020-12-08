@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --cpus-per-task=28
-#SBATCH --nodes=1
 #SBATCH --reservation=chung
+#SBATCH --nodes=1
 #SBATCH --gres=gpu:p40:4
 #SBATCH --mem=102400
 #SBATCH --job-name=training_logger
@@ -13,6 +13,6 @@
 #source ~/pytorch_env/py3.6.3/bin/activate
 
 
-python distributed_trainer.py -c "34,33,32" -w 16 -d data/ -s training_data/
+python distributed_trainer.py -c "47,46,45,44" -w 16 -d data/ -s training_data/
 
 
