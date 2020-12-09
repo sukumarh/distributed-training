@@ -1,4 +1,0 @@
-  File "distributed_trainer.py", line 201
-    print(f'Setting up DDP for GPU (rank): {rank}.')
-                                                  ^
-SyntaxError: invalid syntax
