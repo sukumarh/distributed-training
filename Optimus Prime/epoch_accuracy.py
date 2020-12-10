@@ -1,14 +1,13 @@
 # -*- coding: utf-8 -*-
-import numpy as np
-import matplotlib.pyplot as plt
+# -*- coding: utf-8 -*-
 import pandas as pd
 from tqdm.auto import tqdm
 import glob
-from lightgbm import LGBMClassifier, LGBMRegressor
+from lightgbm import LGBMRegressor
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import KFold
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import confusion_matrix, mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 import pickle
 
 
@@ -19,11 +18,12 @@ for file in tqdm(files):
     dataset.append(data)
 
 dataset = pd.concat(dataset, axis=0, ignore_index=True)
+dataset.rename(columns={dataset.columns[0]: 'epoch'}, inplace=True)
 
 # Select features
-select_X_columns = ['num_of_paramters','gpu', 'is_distributed', 
+select_X_columns = ['epoch', 'num_of_paramters', 'gpu', 'is_distributed', 
                     'num_workers_data_loader', 'num_of_gpus', 'batch_size']
-select_y_columns = ['epoch_timings']
+select_y_columns = ['train_acc']
 
 X, y =  dataset[select_X_columns], dataset[select_y_columns]
 
@@ -70,5 +70,5 @@ print("Validation results: MAE:%3f RMSE:%3f"%(MAE, RMSE))
 
 # Train on entire dataset to save model
 regressor.fit(X, y)
-filename = 'optimus_prime_epoch_time.pkl'
+filename = 'optimus_prime_epoch_accuracy.pkl'
 pickle.dump(regressor, open(filename, 'wb'))

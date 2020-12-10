@@ -1,0 +1,43 @@
+<html>
+  <body>
+    <style>
+      p1 {margin-top:0;margin-bottom:0}
+    </style>
+    <h1>Optimus Prime</h1>
+    <h4>Enter your training configurations to estimate train time and cost</h4>
+    <hr style="width:100px;margin-left:0">
+    <br>
+    <h3>Model Training Configurations</h3>
+    <hr style="width:130px;margin-left:0">
+    <form method="POST" action="" enctype="multipart/form-data">
+      <label for="num_of_paramters">Number of trainable parameters:</label> 
+      <input type="number" name="num_of_paramters" id="num_of_paramters" value=11689500/>
+      <label for="is_distributed">Distributed</label>
+      <input type="checkbox" name="is_distributed" id="is_distributed" value="is_distributed"/>
+      <br/>
+      <label for="num_workers_data_loader">Number of dataloders</label>
+      <input type="number" name="num_workers_data_loader" id="num_workers_data_loader" value=4/>
+      <label for="num_of_gpus">Number of GPUs</label>
+      <input type="number" name="num_of_gpus" id="num_of_gpus" value=1/>
+      <label for="batch_size">Batch size</label>
+      <input type="number" name="batch_size" id="batch_size" value=128/>
+      <br/>
+      <label for="gpu">GPU</label>
+      <select name="gpu" id="gpu">
+        <option value="P40">P40</option>
+        <option value="P100">P100</option>
+        <option value="V100">V100</option>
+      </select>
+      <p><input type="submit" name="submit_btn" value="Estimate"></p>
+    </form>
+    <p1>---------------</p1>
+    <h4 style="margin-top:0;margin-bottom:0">OUTPUT</h4>
+    <p1>---------------</p1>
+    <pre id="text1">
+      {{ text1 }}
+    </pre>
+    <pre id="text2">
+      {{ text2 }}
+    </pre>
+  </body>
+</html>
