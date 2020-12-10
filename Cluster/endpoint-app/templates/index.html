@@ -1,0 +1,37 @@
+<html>
+  <body>
+    <style>
+      p1 {margin-top:0;margin-bottom:0}
+    </style>
+    <h1>Alexnet</h1>
+    <h4>IMAGENET</h4>
+    <hr style="width:100px;margin-left:0">
+    <br>
+    <h3>Model Training</h3>
+    <hr style="width:130px;margin-left:0">
+    <form method="POST" action="" enctype="multipart/form-data">
+      <p><input type="submit" name="submit_btn" value="Train"></p>
+    </form>
+    <p1>---------------</p1>
+    <h4 style="margin-top:0;margin-bottom:0">OUTPUT</h4>
+    <p1>---------------</p1>
+    <pre id="text1">
+      {{ text_1 }}
+    </pre>
+    <br>
+    <br>
+    <h3>Classify</h3>
+    <hr style="width:60px;margin-left:0">
+    <form method="POST" action="" enctype="multipart/form-data">
+      <h4>Upload image</h4>
+      <p><input type="file" name="file"></p>
+      <p><input type="submit" name="submit_btn" value="Classify"></p>
+    </form>
+    <p1>---------------</p1>
+    <h4 style="margin-top:0;margin-bottom:0">OUTPUT</h4>
+    <p1>---------------</p1>
+    <pre>
+      {{ text_2 }}
+    </pre>
+  </body>
+</html>

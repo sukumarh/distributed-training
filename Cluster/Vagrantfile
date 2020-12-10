@@ -1,0 +1,68 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/bionic64"
+  config.vm.hostname = "alexnetK8s"
+
+  # Set up network port forwarding
+  config.vm.network "forwarded_port", guest: 8001, host: 8001, auto_correct: true
+  config.vm.network "forwarded_port", guest: 8002, host: 8002, auto_correct: true
+  config.disksize.size = '20GB'
+  
+  config.vm.provider "virtualbox" do |vb|
+    vb.memory = "6000"
+    vb.cpus = 4
+    vb.customize ["modifyvm", :id, "--natdnshostresolver1", "on"]
+    vb.customize ["modifyvm", :id, "--natdnsproxy1", "on"]
+  end
+  
+  config.vm.provision "docker" do |d|
+  end
+
+  #####################################################################
+  # Setup a IBM Cloud and Kubernetes environment
+  #####################################################################
+  config.vm.provision "shell", inline: <<-SHELL
+    echo "\n************************************"
+    echo " Installing IBM Cloud CLI..."
+    echo "************************************\n"
+    # Install IBM Cloud CLI as Vagrant user
+    sudo -H -u vagrant sh -c 'curl -sL http://ibm.biz/idt-installer | bash'
+    sudo -H -u vagrant sh -c "echo 'source <(kubectl completion bash)' >> ~/.bashrc"
+    sudo -H -u vagrant sh -c "echo alias ic=/usr/local/bin/ibmcloud >> ~/.bash_aliases"
+    sudo -H -u vagrant sh -c "bx plugin install machine-learning"
+    sudo -H -u vagrant sh -c "bx plugin install container-registry -r 'IBM Cloud'"
+    echo "\n"
+    echo "\n************************************"
+    echo " IBM Cloud setup complete\n"
+    echo " You can use alisas ic for ibmcloud command\n"
+    echo " For the Kubernetes Dashboard use:"
+    echo " kubectl proxy --address='0.0.0.0'\n"
+    echo " Then open a browser to: http://localhost:8001/ui \n"
+    echo "************************************\n"
+  SHELL
+
+  # config.vm.provision "shell", inline: <<-SHELL
+  #   echo "\n************************************"
+  #   echo " Installing Kubernetes"
+  #   echo "************************************\n"
+  #   curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+  #   chmod +x minikube
+  #   sudo cp minikube /usr/local/bin/
+  #   rm minikube
+  #   sudo apt-get install -y conntrack
+  #   echo "\n"
+  #   echo "\n"
+  #   echo "\n************************************"
+  #   echo " Installing kubectl"
+  #   echo "************************************\n"
+  #   sudo apt-get update && sudo apt-get install -y apt-transport-https
+  #   curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+  #   echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+  #   sudo apt-get update
+  #   sudo apt-get install -y kubectl
+  #   echo "\n"
+  #   echo "\n"
+  #   echo "\n************************************"
+  #   echo " Kubernetes Minicube setup finished."
+  #   echo "************************************\n"
+  # SHELL
+end

@@ -1,0 +1,14 @@
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+   name: alexnet-pvc
+   labels:
+      app: endpoint-app
+      region: us-south
+spec:
+   storageClassName: manual
+   accessModes:
+      - ReadWriteOnce
+   resources:
+      requests:
+         storage: 5Gi

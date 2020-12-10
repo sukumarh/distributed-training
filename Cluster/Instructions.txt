@@ -1,0 +1,40 @@
+IBM Cloud URL
+--------------------------------------------------------------------------------
+http://169.57.111.102:30002/
+
+
+
+KubeConfig and Certificate Files (.pem)
+--------------------------------------------------------------------------------
+code/ca/
+
+
+Dataset
+--------------------------------------------------------------------------------
+Ensure the dataset is present in the code/endpoint-app/data directory.
+
+
+Commands
+--------------------------------------------------------------------------------
+
+Terminal 1: Alexnet Endpoint
+--------------------------------------------------------------------------------
+vagrant plugin install vagrant-disksize
+vagrant up
+vagrant ssh
+
+# copy the certificate files from the folder
+# ~/.bluemix/plugins/container-service/clusters/
+
+cd /vagrant
+ic login -a cloud.ibm.com
+ic ks cluster config --cluster kube_cluster
+ic cr login
+docker build . -t endpoint
+docker tag endpoint:latest us.icr.io/imagenet/endpoint:alexnet
+docker push endpoint:latest us.icr.io/imagenet/endpoint:alexnet
+kubectl create -f K8s/deployment.yaml
+kubectl create -f K8s/service.yaml
+kubectl create -f K8s/pv.yaml
+kubectl apply -f K8s/pvc.yaml
+
