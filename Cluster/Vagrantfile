@@ -1,12 +1,11 @@
 Vagrant.configure("2") do |config|
   config.vm.box = "ubuntu/bionic64"
-  config.vm.hostname = "alexnetK8s"
+  config.vm.hostname = "project2"
 
   # Set up network port forwarding
   config.vm.network "forwarded_port", guest: 8001, host: 8001, auto_correct: true
   config.vm.network "forwarded_port", guest: 8002, host: 8002, auto_correct: true
-  config.disksize.size = '20GB'
-  
+    
   config.vm.provider "virtualbox" do |vb|
     vb.memory = "6000"
     vb.cpus = 4
@@ -39,30 +38,4 @@ Vagrant.configure("2") do |config|
     echo " Then open a browser to: http://localhost:8001/ui \n"
     echo "************************************\n"
   SHELL
-
-  # config.vm.provision "shell", inline: <<-SHELL
-  #   echo "\n************************************"
-  #   echo " Installing Kubernetes"
-  #   echo "************************************\n"
-  #   curl -Lo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
-  #   chmod +x minikube
-  #   sudo cp minikube /usr/local/bin/
-  #   rm minikube
-  #   sudo apt-get install -y conntrack
-  #   echo "\n"
-  #   echo "\n"
-  #   echo "\n************************************"
-  #   echo " Installing kubectl"
-  #   echo "************************************\n"
-  #   sudo apt-get update && sudo apt-get install -y apt-transport-https
-  #   curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
-  #   echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
-  #   sudo apt-get update
-  #   sudo apt-get install -y kubectl
-  #   echo "\n"
-  #   echo "\n"
-  #   echo "\n************************************"
-  #   echo " Kubernetes Minicube setup finished."
-  #   echo "************************************\n"
-  # SHELL
 end

@@ -1,7 +1,7 @@
  apiVersion: apps/v1
  kind: Deployment
  metadata:
-   name: alexnet-endpoint
+   name: project-endpoint
  spec:
    replicas: 2
    selector:
@@ -14,14 +14,7 @@
      spec:
        containers:
        - name: endpoint-app
-         image: us.icr.io/imagenet/endpoint:alexnet
+         image: us.icr.io/imagenet/endpoint:project
          imagePullPolicy: Always
-         volumeMounts:
-         - name: alexnet-pv
-           mountPath: /mnt/data
          ports:
           - containerPort: 8002
-       volumes:
-       - name: alexnet-pv
-         persistentVolumeClaim:
-          claimName: alexnet-pvc

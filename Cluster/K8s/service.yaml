@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: alexnet-endpoint
+  name: project-endpoint
 spec:
   ports:
   - port: 8002
