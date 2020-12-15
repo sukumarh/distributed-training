@@ -32,6 +32,8 @@ distributed_trainer.py [-h] [-b BATCH_SIZE] [-c CONFIGURATIONS]
 ```
 
 ## Evaluations
+The following graph shows the epoch timings for various configurations. In this experiment, each GPU trained on the entire dataset, leading to an increase in the epoch time with a larger decrease in the number of epochs required to reach a certain accuracy.
+
 ![Evaluations](/Resources/avg_epoch_time.jpg)
 
 ### Recommender model
